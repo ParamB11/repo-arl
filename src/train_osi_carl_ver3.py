@@ -22,21 +22,17 @@ import joblib
 import gym
 from gymnasium import spaces
 from gymnasium.wrappers import FlattenObservation, FilterObservation, StepAPICompatibility
-# from mpi4py import MPI
 import numpy as np
 import policy_transfer.envs
 from policy_transfer.policies.mirror_policy import *
 from policy_transfer.policies.mlp_policy import *
 from policy_transfer.utils.mlp import *
 from policy_transfer.utils.optimizer import *
-# from policy_transfer.uposi.osi_env_wrapper import *
-# from stable_baselines3 import DDPG, PPO, SAC, TD3
 import tensorflow as tf
 
 from common_utils import init_carl, load_policy
-# from crl_py.custom_wrappers import ToGymnasiumActionSpace
 from custom_wrappers import ToGymActionSpace, ToGymObservationSpace, ConcatObservationAction
-# from crl_py.envs.carl_brax import CARLBraxAnt, CARLBraxHalfcheetah
+from envs.carl_brax import CARLBraxAnt, CARLBraxHalfcheetah
 from osi_carl_utils import update_queues
 from osi_env_wrapper_carl import OSIEnvWrapper
 from envs.carl_brax import CARLBraxAnt, CARLBraxHalfcheetah
@@ -162,21 +158,6 @@ def main():
 
     print('len(train_context_dict) = ', len(train_context_dict))
 
-    # def env_fn(show_context):
-    #     tenv = carl_env_fn(contexts=train_context_dict, 
-    #                        obs_context_features=list(train_context_dict[0].keys()), 
-    #                        context_selector=RoundRobinSelector)
-    #     if show_context:
-    #         # tenv = carl_env_fn(contexts=train_context_dict, 
-    #         #                    obs_context_features=list(train_context_dict[0].keys()), 
-    #         #                    context_selector=RoundRobinSelector)
-    #         tenv = FlattenObservation(FilterObservation(tenv, filter_keys=["obs", "context"]))
-    #     else:
-    #         # tenv = carl_env_fn(contexts=train_context_dict, 
-    #         #                    obs_context_features=list(train_context_dict[0].keys()), 
-    #         #                    context_selector=RoundRobinSelector)
-    #         tenv = FlattenObservation(FilterObservation(tenv, filter_keys=["obs"]))
-    #     return tenv
     def to_gym(env):
         supported_spaces = (gym.spaces.box.Box, gym.spaces.discrete.Discrete)
         if not isinstance(env.observation_space, supported_spaces):
@@ -192,12 +173,6 @@ def main():
                               obs_context_features=list(train_context_dict[0].keys()), 
                               hide_context=False, 
                               context_selector=RoundRobinSelector))
-    # env_hist = to_gym(
-    #     ConcatObservationAction(
-    #         env_fn(show_context=False), 
-    #         stack_size_obs=OSI_hist+1, 
-    #         stack_size_act=OSI_hist)
-    # )
     env_hist = to_gym(ConcatObservationAction(
         init_carl(carl_env_fn, 
                   contexts=train_context_dict,
@@ -284,27 +259,12 @@ def main():
     sess = tf.compat.v1.InteractiveSession()
     U.initialize()
 
-    # cur_scope = up_policy.get_variables()[0].name[0:up_policy.get_variables()[0].name.find('/')]
-    # orig_scope = list(policy_params.keys())[0][0:list(policy_params.keys())[0].find('/')]
-
-    # vars = up_policy.get_variables()
-    # for i in range(len(up_policy.get_variables())):
-    #     assign_op = up_policy.get_variables()[i].assign(
-    #         policy_params[up_policy.get_variables()[i].name.replace(cur_scope, orig_scope, 1)])
-    #     sess.run(assign_op)
-
-    # osi_env = OSIEnvWrapper(env_hist, osi, OSI_hist, len(dyn_params))
     osi_env = OSIEnvWrapper(env_hist, osi, OSI_hist, len(context_labels), np.squeeze(label_scale_factor))
 
     updater.sync()
 
-    # env_up.env.resample_MP = True
-    # env_hist.env.resample_MP = True
-
-    seed_up = seed # seed_up = seed + MPI.COMM_WORLD.Get_rank() # env_up.seed(seed + MPI.COMM_WORLD.Get_rank())
-    seed_hist = seed # seed_hist = seed + MPI.COMM_WORLD.Get_rank() # env_hist.seed(seed + MPI.COMM_WORLD.Get_rank())
-    # print('seed_up =', seed_up)
-    # print('seed_hist =', seed_hist)
+    seed_up = seed 
+    seed_hist = seed 
     
     env_up.reset(seed=seed_up)
     env_hist.reset(seed=seed_hist)
@@ -339,10 +299,7 @@ def main():
         # collect samples
         env_to_use = env_up
         if iter > 0:
-        #     print("(inside if) cid =", cid)
-        #     # osi_env.wrapped_env.context_id = cid
             env_to_use = osi_env
-        #     env_to_use.wrapped_env.context_id = cid
 
         lengths = []
         collected_data_size = 0
@@ -358,11 +315,6 @@ def main():
             # collect one trajectory
             o, cid = env_to_use.reset()
             if iter == 0: osi_env.reset()
-            # if iter == 0:
-            #     print('cid = {0}, current context = {1}'.format(cid, env_to_use.get_wrapper_attr('context')))
-            # else:
-            #     print('cid = {0}, current context = {1}'
-            #           .format(cid, env_to_use.wrapped_env.get_wrapper_attr('context')))
             one_obs_len = env_to_use.unwrapped.observation_space.shape[0]
             last_obs = o[-one_obs_len:]
             last_act = padding_value_act
@@ -398,8 +350,6 @@ def main():
                 # act, _ = up_policy.act(True, o)
                 act, _ = up_policy.predict(o, deterministic=False)
                 if isinstance(tenv.action_space, (gym.spaces.box.Box, gymnasium.spaces.box.Box)):
-                    # print('Has attribute len')
-                    # noisy_act = act + np.random.normal(0, args.action_noise, len(act))
                     noise = np.random.normal(0, args.action_noise, size=act.shape[0])*max_abs_action_space
                     # print(f'act = {act}, noise = {noise}')
                     noisy_act = act + noise

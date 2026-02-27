@@ -24,10 +24,8 @@ from carl.context.selection import StaticSelector, RoundRobinSelector
 from carl.envs import CARLAcrobot, CARLCartPole, CARLLunarLander, CARLMountainCar, CARLPendulum
 import gym
 from gymnasium.wrappers import FlattenObservation, FilterObservation, StepAPICompatibility
-# from stable_baselines3 import DDPG, DQN, PPO, SAC, TD3
 from stable_baselines3.common.evaluation import evaluate_policy
 from tf_agents.environments import tf_py_environment
-# from tf_agents.policies import random_tf_policy
 import torch
 
 # from carl_wrapper_tf_agents_py import CarlWrapper
@@ -35,7 +33,7 @@ from common_utils import init_carl, load_gru, load_policy
 from config import get_config
 from custom_wrappers import ConcatObservationAction, LstmObservationAction, ToGymActionSpace, ToGymObservationSpace, UPExpertWrapper
 from envs.carl_brax import CARLBraxAnt, CARLBraxHalfcheetah
-from eval_utils import compute_avg_return #, compute_avg_return_cep, compute_avg_return_knnep
+from eval_utils import compute_avg_return
 # from evaluation_rel_th import env_fn
 from lstm_context_pred import GRUContextPredictor, LSTMContextPredictor, RecurrentContextPredictor
 from lstm_env_wrapper import InformerEnvWrapper, LstmEnvWrapper, PredEnvWrapper
@@ -137,11 +135,6 @@ def main():
     # Use these aliases when we may swap in alternative implementations at runtime.
     RecurrentContextPredictor_cls = RecurrentContextPredictor
     PredEnvWrapper_cls = PredEnvWrapper
-
-    parent_dir = os.path.dirname(current_dir)
-    informer_dir = os.path.join(parent_dir, 'git_informer')
-    sys.path.append(informer_dir)
-    from models.model import Informer
     
     carl_env_fn = eval(args.carl_env_name)
     DEFAULT_CONTEXT = carl_env_fn.get_default_context()
@@ -244,38 +237,6 @@ def main():
                         results[label][round] = rewards_uposi
                     print("Agent: {0}. Average reward over evaluation set: {1:.2f}, Standard deviation: {2:.2f}"
                           .format(label, np.mean(rewards_uposi), np.std(rewards_uposi)))
-
-                elif suffix.find("hist")!=-1:
-                    label = label_fn(suffix)
-                    print(f'Testing {label} agent ...')
-                    up_policy_name = args.up_prefix+labels_str+"_up"
-                    if args.uphistsuffix != '':
-                        up_policy_name = f'{up_policy_name}_{args.uphistsuffix}'
-                    up_policy_path = os.path.join(current_dir, args.up_policy_path, up_policy_name)
-                    print('up_policy_path =', up_policy_path)
-                    # up_policy = PPO.load(up_policy_path, env=None)
-                    uphist_policy = load_policy(up_policy_path, args.device)
-                    rewards_uphist = np.zeros((len(eval_context_dict),))
-                    for i in range(len(eval_context_dict)):
-                        contexti = eval_context_dict[i]
-                        # py_envi = CarlWrapper(carl_env_fn=carl_env_fn, contexts=contexti, 
-                        #                    hide_context=True, context_selector=StaticSelector)
-                        tenv = init_carl(carl_env_fn, contexts=contexti, 
-                                         obs_context_features=list(contexti[0].keys()),
-                                         hide_context = True,
-                                         context_selector=StaticSelector,
-                                        )
-                        env_histi = ConcatObservationAction(tenv, stack_size_obs=args.up_hist+1, stack_size_act=args.up_hist)
-                        # env_histi = env_fn(carl_env_fn, contexti, args.up_hist+1, args.up_hist, show_context=False)
-                        # rewards_uposi[i], _ = compute_avg_return_uposi(py_envi, up_policy, num_episodes=args.nevals)
-                        rewards_uphist[i], _ = evaluate_policy(uphist_policy, env_histi, n_eval_episodes=args.nevals)
-                    if round == 0:
-                        results[label] = np.zeros((args.nrounds,len(eval_context_dict)))
-                        results[label][0] = rewards_uphist
-                    else:
-                        results[label][round] = rewards_uphist
-                    print("Agent: {0}. Average reward over evaluation set: {1:.2f}, Standard deviation: {2:.2f}"
-                          .format(label, np.mean(rewards_uphist), np.std(rewards_uphist)))
                 
                 elif suffix.find("osi")!=-1:
                     label = label_fn(suffix)
@@ -480,136 +441,6 @@ def main():
                         results[label][round] = rewards_upgru
                     print("Agent: {0}. Average reward over evaluation set: {1:.2f}, Standard deviation: {2:.2f}"
                           .format(label, np.mean(rewards_upgru), np.std(rewards_upgru)))
-                elif suffix.find("informer")!=-1:
-                    label = label_fn(suffix)
-                    print(f'Testing {label} agent ...')
-                    up_policy_name = args.up_prefix+labels_str+"_up"
-                    if args.up_suffix != '':
-                        up_policy_name = f'{up_policy_name}_{args.up_suffix}'
-                    up_policy_path = os.path.join(current_dir, args.up_policy_path, up_policy_name)
-                    print('up_policy_path =', up_policy_path)
-                    up_policy = load_policy(up_policy_path, args.device)
-                    comb_prefix = args.up_prefix + labels_str #+ args.knnepsuffix
-                    pred_name = comb_prefix + "_informer_up_predictor.pt"
-                    # pred_name = comb_prefix + "_up_informer_predictor.pt" #temp only for testing
-
-                    tenv = init_carl(carl_env_fn)
-                    eng_bool = False
-                    stack_height = 10
-                    obs_len = tenv.observation_space.shape[0]
-                    if tenv.action_space.shape ==():
-                        act_len = 1
-                    else:
-                        act_len = tenv.action_space.shape[0]
-                    # if eng_bool:
-                    #     state_len = 6*obs_len + 2*act_len
-                    # else:
-                    state_len = obs_len + act_len
-                    Inf_hist = 10
-                    label_len = 5
-                    pred_len = 1
-                    # pred_net = LSTMContextPredictor(state_len, 32, len(context_labels), device=args.device)
-                    pred_net = Informer(enc_in=state_len, dec_in=len(context_labels), c_out=len(context_labels), seq_len=None, label_len=None, out_len=1, device=torch.device(args.device))
-                    pred_net_path = os.path.join(current_dir, args.savedir, pred_name)
-                    print(f'pred_net_path = {pred_net_path}')
-                    if args.device == 'cpu' or not torch.cuda.is_available():
-                        pred_net.load_state_dict(torch.load(pred_net_path, map_location=torch.device('cpu')))
-                    else: 
-                        pred_net.load_state_dict(torch.load(pred_net_path))
-                    pred_net.eval()
-                    rewards_upinformer = np.zeros((len(eval_context_dict),))
-                    for i in range(len(eval_context_dict)):
-                        contexti = eval_context_dict[i]
-                        eval_env = init_carl(carl_env_fn, 
-                                             contexts=contexti, 
-                                             obs_context_features=context_labels,
-                                             hide_context=True,
-                                             context_selector=RoundRobinSelector
-                                            )
-                        eval_env_wrapped = ConcatObservationAction(eval_env, stack_size_obs=Inf_hist, stack_size_act=Inf_hist)
-                        eval_env_wrapped = InformerEnvWrapper(eval_env_wrapped, pred_net, stack_size=Inf_hist, 
-                                                          context_dim=len(context_labels), context_scale=label_scale_factor,
-                                                          label_len=label_len, pred_len=pred_len
-                                                         )
-                        rewards_upinformer[i], _ = compute_avg_return(eval_env_wrapped, up_policy, num_episodes=args.nevals)
-                    if round == 0:
-                        results[label] = np.zeros((args.nrounds,len(eval_context_dict)))
-                        results[label][0] = rewards_upinformer
-                    else:
-                        results[label][round] = rewards_upinformer
-                    print("Agent: {0}. Average reward over evaluation set: {1:.2f}, Standard deviation: {2:.2f}"
-                          .format(label, np.mean(rewards_upinformer), np.std(rewards_upinformer)))
-                elif suffix.find("knn")!=-1:
-                    label = label_fn(suffix)
-                    print(f'Testing {label} agent ...')
-                    up_policy_name = args.up_prefix+labels_str+"_up"
-                    if args.up_suffix != '':
-                        up_policy_name = f'{up_policy_name}_{args.up_suffix}'
-                    up_policy_path = os.path.join(current_dir, args.up_policy_path, up_policy_name)
-                    print('up_policy_path =', up_policy_path)
-                    up_policy = load_policy(up_policy_path, args.device)
-                    comb_prefix = args.up_prefix + labels_str #args.prefix_experts + labels_str #+ args.knnepsuffix
-                    pred_name = comb_prefix + "_upex_predictor.pt"
-
-                    tenv = init_carl(carl_env_fn)
-                    eng_bool = False
-                    stack_height = 4
-                    obs_len = tenv.observation_space.shape[0]
-                    if tenv.action_space.shape ==():
-                        act_len = 1
-                    else:
-                        act_len = tenv.action_space.shape[0]
-                    if eng_bool:
-                        state_len = 6*obs_len + 2*act_len
-                    else:
-                        state_len = (stack_height+2)*obs_len + (stack_height+1)*act_len # for stack_height = 4
-                    pred_net = LSTMContextPredictor(state_len, 32, len(context_labels), device=args.device)
-                    pred_net_path = os.path.join(current_dir, args.savedir, pred_name)
-                    print(f'pred_net_path = {pred_net_path}')
-                    if args.device == 'cpu' or not torch.cuda.is_available():
-                        pred_net.load_state_dict(torch.load(pred_net_path, map_location=torch.device('cpu')))
-                    else: 
-                        pred_net.load_state_dict(torch.load(pred_net_path))
-                    knn_dir = os.path.join(current_dir, 'context_data/')
-                    up_prefix = args.up_prefix + '_up'
-                    if args.up_suffix != '':
-                        up_prefix = f'{up_prefix}_{args.up_suffix}'
-                    knn_name = f'{up_prefix}{labels_str}_knn_{args.knnclfsuffix}.joblib'
-                    knn_path = os.path.join(knn_dir, knn_name)
-                    print('knn_path =', knn_path)
-                    knnclf = joblib.load(knn_path)
-                    context_experts = np.array(args.context_experts).reshape(np.size(labels),-1)
-                    centroids = context_experts
-                    context_mean_nz = context_mean #nz = nonzero
-                    for i in range(len(context_mean_nz)):
-                        if context_mean_nz[i] == 0.0:
-                            context_mean_nz[i] = 1.0
-                    rewards_upknn = np.zeros((len(eval_context_dict),))
-                    for i in range(len(eval_context_dict)):
-                        contexti = eval_context_dict[i]
-                        # py_envi = CarlWrapper(carl_env_fn=carl_env_fn, contexts=contexti, 
-                        #                    hide_context=True, context_selector=StaticSelector)
-                        # envi = tf_py_environment.TFPyEnvironment(py_envi)
-                        eval_env = init_carl(carl_env_fn, 
-                                             contexts=contexti, 
-                                             obs_context_features=context_labels,
-                                             hide_context=True,
-                                             context_selector=RoundRobinSelector
-                                            )
-                        eval_env_wrapped = LstmObservationAction(eval_env, stack_size=stack_height)
-                        eval_env_wrapped = LstmEnvWrapper(eval_env_wrapped, pred_net, stack_size=stack_height, 
-                                                          context_dim=len(context_labels), context_scale=label_scale_factor)
-                        eval_env_wrapped = UPExpertWrapper(eval_env_wrapped, context_experts.T, context_mean_nz, knnclf=knnclf)
-                        # rewards_upknn[i], _ = compute_avg_return_knnep(eval_env_wrapped, tf_experts_dict, context_experts,
-                        #                            context_mean, knnclf, num_episodes=args.nevals, pred=False, verbose=False)
-                        rewards_upknn[i], _ = compute_avg_return(eval_env_wrapped, up_policy, num_episodes=args.nevals)
-                    if round == 0:
-                        results[label] = np.zeros((args.nrounds,len(eval_context_dict)))
-                        results[label][0] = rewards_upknn
-                    else:
-                        results[label][round] = rewards_upknn
-                    print("Agent: {0}. Average reward over evaluation set: {1:.2f}, Standard deviation: {2:.2f}"
-                          .format(label, np.mean(rewards_upknn), np.std(rewards_upknn)))
                 else:
                     print(f'Found suffix {suffix} which is not implemented yet.')
     '''Plotting all the results'''
@@ -632,30 +463,25 @@ def main():
         mean_diff_scaled = np.mean(diff_scaled, axis=1)
         max_diff_scaled = np.max(diff_scaled, axis=1)
         diff_scaled_sort_idx = np.argsort(diff_scaled, axis=1)
-        print(f'{key}: diff_scaled[diff_scaled_sort_idx[-5:]] = {np.take_along_axis(diff_scaled, diff_scaled_sort_idx[:,-5:], axis=1)}')
-        print(f'{key}: expert_rewards[diff_scaled_sort_idx[-5:]] = {np.take_along_axis(expert_rewards, diff_scaled_sort_idx[:,-5:], axis=1)}')
-        print(f'{key}: value[diff_scaled_sort_idx[-5:]] = {np.take_along_axis(value, diff_scaled_sort_idx[:,-5:], axis=1)}')
-        print(f'{key}: eval_contexts[diff_scaled_sort_idx[-5:]] =', 
-              f'{np.take_along_axis(eval_contexts, np.expand_dims(diff_scaled_sort_idx[:,-5:], axis=2), axis=1)}')
         mean_gap_data[key] = f'{np.mean(mean_diff_scaled):.2f} +/- {np.std(mean_diff_scaled):.2f}'
         robustness_gap_data[key] = f'{np.mean(max_diff_scaled):.2f} +/- {np.std(max_diff_scaled):.2f}'
         value_mean = np.mean(value, axis=1)
         value_min = np.min(value, axis=1)
-        print(f'{key}: Mean Rewards: Mean: {np.mean(value_mean):.2f} Std.: {np.std(value_mean):.2f}')
-        print(f'{key}: Worst case Rewards: Mean: {np.mean(value_min):.2f} Std.: {np.std(value_min):.2f}')
+        # print(f'{key}: Mean Rewards: Mean: {np.mean(value_mean):.2f} Std.: {np.std(value_mean):.2f}')
+        # print(f'{key}: Worst case Rewards: Mean: {np.mean(value_min):.2f} Std.: {np.std(value_min):.2f}')
         
-        print('Absolute values:')
-        print('{0}: Mean difference:{1}, Max difference:{2}'.format(key, mean_diff, max_diff))
-        print('{0}: Mean of means: {1:.2f}, Std. of means: {2:.2f}'
-              .format(key, np.mean(mean_diff), np.std(mean_diff)))
-        print('{0}: Mean of maxs: {1:.2f}, Std. of maxs: {2:.2f}'
-              .format(key, np.mean(max_diff), np.std(max_diff)))
-        print('Percentages:')
-        print('{0}: Mean difference:{1}, Max difference:{2}'.format(key, mean_diff_scaled, max_diff_scaled))
-        print('{0}: Mean of means: {1:.2f}, Std. of means: {2:.2f}'
-              .format(key, np.mean(mean_diff_scaled), np.std(mean_diff_scaled)))
-        print('{0}: Mean of maxs: {1:.2f}, Std. of maxs: {2:.2f}'
-              .format(key, np.mean(max_diff_scaled), np.std(max_diff_scaled)))
+        # print('Absolute values:')
+        # print('{0}: Mean difference:{1}, Max difference:{2}'.format(key, mean_diff, max_diff))
+        # print('{0}: Mean of means: {1:.2f}, Std. of means: {2:.2f}'
+        #       .format(key, np.mean(mean_diff), np.std(mean_diff)))
+        # print('{0}: Mean of maxs: {1:.2f}, Std. of maxs: {2:.2f}'
+        #       .format(key, np.mean(max_diff), np.std(max_diff)))
+        # print('Percentages:')
+        # print('{0}: Mean difference:{1}, Max difference:{2}'.format(key, mean_diff_scaled, max_diff_scaled))
+        # print('{0}: Mean of means: {1:.2f}, Std. of means: {2:.2f}'
+        #       .format(key, np.mean(mean_diff_scaled), np.std(mean_diff_scaled)))
+        # print('{0}: Mean of maxs: {1:.2f}, Std. of maxs: {2:.2f}'
+        #       .format(key, np.mean(max_diff_scaled), np.std(max_diff_scaled)))
 
     # print(f'mean_gap_data (type={type(mean_gap_data)}) = {mean_gap_data}')
     mean_gap_table = [list(mean_gap_data.keys()), list(mean_gap_data.values())]
