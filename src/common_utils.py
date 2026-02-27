@@ -7,7 +7,6 @@ sys.path.append('./src')
 
 from baselines.common import tf_util as U
 from carl.context.selection import StaticSelector
-# from carl.envs import CARLAcrobot, CARLBipedalWalker, CARLBraxAnt, CARLBraxHalfcheetah, CARLCartPole, CARLLunarLander, CARLMountainCar, CARLMountainCarContinuous, CARLPendulum
 import gym
 from gymnasium.wrappers import FlattenObservation, FilterObservation, StepAPICompatibility
 import numpy as np
@@ -103,17 +102,6 @@ def to_gym(env):
     env = StepAPICompatibility(env, output_truncation_bool=False)
     return env
 
-# def env_fn(carl_env_fn, context, OSI_hist, show_context=False):
-#     tenv = init_carl(carl_env_fn, contexts=context, 
-#                      obs_context_features=list(context[0].keys()),
-#                      hide_context = not show_context,
-#                      context_selector=StaticSelector,
-#                     )
-#     env_hist = to_gym(
-#         ConcatObservationAction(tenv, stack_size_obs=OSI_hist, stack_size_act=OSI_hist)
-#     )
-#     return env_hist
-
 def env_fn(carl_env_fn, context, stack_size_obs, stack_size_act, show_context=False):
     tenv = init_carl(carl_env_fn, contexts=context, 
                      obs_context_features=list(context[0].keys()),
@@ -164,9 +152,6 @@ def save_policy_params(load_path, device):
 def load_policy_from_params(path, env, device='cpu'):
     if not os.path.exists(path):
         # Code to run if the file doesn't exist
-        # print("File doesn't exist. Waiting for 2 mins.")
-        # time.sleep(120)
-        # if not os.path.exists(path):
         print("File doesn't exist, creating it now. Calling save_policy_params()")
         load_path = path.replace('_params.pkl', '')
         save_policy_params(load_path, device)
@@ -191,9 +176,6 @@ def load_policy_from_params(path, env, device='cpu'):
         policy = DDPG("MlpPolicy", env, device=device)
         policy.set_parameters(path)
     return policy
-    
-# def make_carl_fn(env_name:str):
-#     return eval(env_name)
 
 class SaveCallback(BaseCallback):
     def __init__(

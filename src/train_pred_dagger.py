@@ -1,13 +1,8 @@
-'''
-Base code: train_lstm_dagger
-Additions: Features to make it work for both lstm and gru
-'''
 import argparse
 import os
 import sys
 import time
 import traceback
-# sys.path.append('./crl_py')
 
 from carl.context.selection import RoundRobinSelector, StaticSelector
 from carl.envs import CARLAcrobot, CARLLunarLander, CARLMountainCar, CARLPendulum
@@ -27,7 +22,6 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-carl_env_name', type=str, help='name of the CARL environment', default='CARLPendulum')
     parser.add_argument('-context_labels', '--context_labels', nargs='+', type=str, help='context labels', required=True)
-    # parser.add_argument('-rel_std', '--rel_std', nargs='+', type=float, help='relative standard deviation for training', default=[0.25])
     parser.add_argument('-stack_height', type=int, help='stack_height to use for lstm predictor', default=4)
     parser.add_argument('-model_arch', type=str, help='specify pred_net architecture. options=[lstm, gru]', default='lstm')
     parser.add_argument('-recurrent_hidden_size', type=int, help='set hidden_size for pred_net', default=32)
@@ -76,23 +70,6 @@ def main():
     for key in DEFAULT_CONTEXT.keys():
         if key in context_labels:
             context_mean.append(DEFAULT_CONTEXT[key])
-    
-    # if isinstance(args.rel_std, list):
-    #     if len(args.rel_std) == 1:
-    #         context_rel_std = [args.rel_std[0]]*len(context_mean)
-    #     else:
-    #         context_rel_std = args.rel_std
-    # else:
-    #     raise TypeError(f"Found type(args.rel_std)={type(args.rel_std)}. Expected list.")
-    
-    # context_std = np.zeros(len(context_mean))
-    # for i in range(len(context_mean)):
-    #     mean = context_mean[i]
-    #     if mean != 0.0:
-    #         context_std[i] = abs(mean)*context_rel_std[i]
-    #     else:
-    #         context_std[i] = context_rel_std[i]
-    # print("context_std = ", context_std)
 
     labels_str = ""
     for label in context_labels:
@@ -149,11 +126,6 @@ def main():
         device = 'cuda'
     else:
         device = 'cpu'
-    # if args.model_arch == 'lstm':
-    #     pred_net = LSTMContextPredictor(state_len, 32, len(context_labels), device=args.device)
-    # elif args.model_arch == 'gru':
-    #     pred_net = GRUContextPredictor(state_len, 32, len(context_labels), device=args.device)
-    # recurrent_hidden_size = 28
     hidden_layers = [int(e) for e in args.hidden_layers]
     pred_net = RecurrentContextPredictor(
         state_len, args.recurrent_hidden_size, hidden_layers, len(context_labels), 
@@ -165,8 +137,6 @@ def main():
             print(f'name={name},data={param.data.shape}')
 
     ## Defining optimizer
-    # updater = Adam(pred_net.parameters(), lr=0.001, betas=(0.9,0.999))
-    # optimizer = LstmOptimizer(pred_net)
     optimizer = LstmOptimizer()
 
     ## Defining environments for training
@@ -182,9 +152,6 @@ def main():
                   hide_context=True, 
                   context_selector=RoundRobinSelector), 
         stack_size=args.stack_height)
-    # print(f'env_hist.observation_space={env_hist.observation_space}')
-    # env_uppred = LstmEnvWrapper(env_hist, pred_net, stack_size=args.stack_height, 
-    #                             context_dim=len(context_labels), context_scale=label_scale_factor)
     env_uppred = PredEnvWrapper(env_hist, pred_net, net_arch=args.model_arch, stack_size=args.stack_height, 
                                 context_dim=len(context_labels), context_scale=label_scale_factor)
     
