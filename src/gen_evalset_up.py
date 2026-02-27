@@ -1,17 +1,12 @@
 '''
 Code for generating and labelling the evaluation set. Note that label refers to 
 the reward of Universal Policy with true context i.e. UP(c).
-The purpose of the code is similar to gen_evalset_th.py. The difference being 
-that in gen_evalset_th.py has the best expert as the optimal policy while in
-this code UP(c) is the optimal policy.
-Base code: gen_evalset_th.py
 '''
 
 import argparse
 import io
 import joblib
 import multiprocessing
-# import pickle
 import os
 import sys
 import time
@@ -25,7 +20,6 @@ from gymnasium.wrappers import FlattenObservation, FilterObservation
 import numpy as np
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.save_util import json_to_data
-# import tensorflow as tf
 import torch
 
 from common_utils import init_carl, load_policy, load_policy_from_params
@@ -34,10 +28,8 @@ from envs.carl_brax import CARLBraxAnt, CARLBraxHalfcheetah
 from yaml_functions import preprocess_hyperparams, read_hyperparams
 
 def eval_helper(carl_env_name, contexti, policy_params_path, eval_episodes, device):
-    # print(f'carl_env_name = {carl_env_name}')
     carl_env_fn = eval(carl_env_name)
     context_labels = list(contexti[0].keys())
-    # print(f'Loading UP ...')
     context_temp = {0:{k:0.0 for k in context_labels}}
     env_temp = init_carl(carl_env_fn,
                          contexts=context_temp,
@@ -45,14 +37,9 @@ def eval_helper(carl_env_name, contexti, policy_params_path, eval_episodes, devi
                          hide_context=False,
                          context_selector=StaticSelector)
     if not isinstance(env_temp.action_space, (gymnasium.spaces.Discrete, gymnasium.spaces.Box)):
-        # print(f'env_temp.action_space={env_temp.action_space} not of correct type.')
-        # raise TypeError
         env_temp = ToGymnasiumActionSpace(env_temp)
         
-    # print('env_temp initialized')
     policy_test = load_policy_from_params(policy_params_path, env_temp, device=device)
-    # print(f'Loading UP: Successful.')
-    # print(f'contexti = {contexti}')
     eval_env = init_carl(carl_env_fn, 
                          contexts=contexti, 
                          obs_context_features=context_labels,
@@ -60,7 +47,6 @@ def eval_helper(carl_env_name, contexti, policy_params_path, eval_episodes, devi
                          context_selector=StaticSelector
                         )
     mean_rew, std_rew = evaluate_policy(policy_test, eval_env, n_eval_episodes=eval_episodes)
-    # print(f'context: {contexti[0]}, Reward: mean: {mean_rew:.2f} +/- {std_rew:.2f}')
     return mean_rew
 
 def main():
@@ -138,53 +124,11 @@ def main():
     policy_params_path = f'{up_policy_path}_params.pkl'
     print(f'policy_params_path = {policy_params_path}')
 
-    ## Debuging code start 1/2
-    ## For checking the size of the policy network in .zip file and the final policy
-    # file = f"{up_policy_path}.zip"
-    # with zipfile.ZipFile(file) as archive:
-    #     namelist = archive.namelist()
-    #     print(f"namelist = {namelist}")
-    #     if "data" in namelist:
-    #         # Load class parameters that are stored
-    #         # with either JSON or pickle (not PyTorch variables).
-    #         json_data = archive.read("data").decode()
-    #         data = json_to_data(json_data, custom_objects=None)
-    #         # print(f"data = {data}")
-
-    #     pth_files = [file_name for file_name in namelist if os.path.splitext(file_name)[1] == ".pth"]
-    #     for file_path in pth_files:
-    #         with archive.open(file_path, mode="r") as param_file:
-    #             # File has to be seekable, but param_file is not, so load in BytesIO first
-    #             # fixed in python >= 3.7
-    #             file_content = io.BytesIO()
-    #             file_content.write(param_file.read())
-    #             # go to start of file
-    #             file_content.seek(0)
-    #             # Load the parameters with the right ``map_location``.
-    #             # Remove ".pth" ending with splitext
-    #             # Note(antonin): we cannot use weights_only=True, as it breaks with PyTorch 1.13, see GH#1911
-    #             th_object = torch.load(file_content, map_location=args.device, weights_only=False)
-    #             print(f"file_path = {file_path}, th_object type = {type(th_object)}")
-    #             if file_path == "policy.pth":
-    #                 print(f"th_object.keys() = {th_object.keys()}")
-    #                 for k, v in th_object.items():
-    #                     print(f"{k}: {v.shape}")
-    #             if file_path == "pytorch_variables.pth" or file_path == "tensors.pth":
-    #                 # PyTorch variables (not state_dicts)
-    #                 pytorch_variables = th_object
-    #                 print(f"pytorch_variables = {pytorch_variables}")
-    ## Debuging code end 1/2
-
     if not args.parallel_eval:
         up_policy = load_policy(up_policy_path, device=args.device)
         print(f'Successfully loaded policy using .zip')
     else:
         print(f'Evaluation will be parallelized and policy will be loaded using .pkl')
-
-    # Print architecture of up_policy
-    ## Debugging code start  2/2
-    # print(f"up_policy.policy.net_arch = {up_policy.policy.net_arch}")
-    ## Debugging code end 2/2
 
     ## Loop for generating evaluation set
     prefix_experts = f'{args.up_prefix}_sb3'
@@ -249,10 +193,7 @@ def main():
                                      context_selector=StaticSelector
                                     )
                 if not isinstance(eval_env.action_space, (gymnasium.spaces.Discrete, gymnasium.spaces.Box)):
-                    # print(f'env_temp.action_space={env_temp.action_space} not of correct type.')
-                    # raise TypeError
                     eval_env = ToGymnasiumActionSpace(eval_env)
-                # rewards_upc[i], _ = compute_avg_return(eval_env, up_policy, num_episodes=args.eval_episodes)
                 rewards_upc[i], _ = evaluate_policy(up_policy, eval_env, n_eval_episodes=args.eval_episodes)
         print(f'rewards_upc.shape = {rewards_upc.shape}')
         save_path = prefix_experts + label_str + "_upcrewards_" + str(args.n_eval_samples) + "_" + str(seed) + args.datasuffix

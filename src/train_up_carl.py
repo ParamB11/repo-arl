@@ -20,36 +20,8 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from common_utils import SaveCallback
 from custom_wrappers import ToGymActionSpace, ToGymObservationSpace, ToGymnasiumActionSpace
-# from envs.carl_brax import CARLBraxAnt, CARLBraxHalfcheetah
-# from envs.carl_classiccontrol import CARLPendulum2, CARLSpringInvertedPendulum, CARLVanderPol
+from envs.carl_brax import CARLBraxAnt, CARLBraxHalfcheetah
 from yaml_functions import preprocess_hyperparams, read_hyperparams
-
-
-# class SaveCallback(BaseCallback):
-#     def __init__(
-#         self,
-#         save_path: str,
-#         name_prefix:str = "rl_model",
-#         chckpt_bool:bool = False,
-#         verbose: int = 0,
-#     ):
-#         super().__init__(verbose)
-#         self.save_path = save_path
-#         self.name_prefix = name_prefix
-#         self.chckpt_bool = chckpt_bool
-    
-#     def _on_step(self) -> bool:
-#         model_path = os.path.join(self.save_path, f"{self.name_prefix}.zip")
-        
-#         self.model.save(model_path)
-#         if self.verbose >= 1:
-#             print(f"Saving model to {model_path}.")
-#         if self.chckpt_bool:
-#             checkpoint_path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.zip")
-#             self.model.save(checkpoint_path)
-#             if self.verbose >= 1:
-#                 print(f"Checkpointing model at {checkpoint_path}.")
-#         return True
 
 def main():
     import argparse
@@ -81,7 +53,6 @@ def main():
     labels = np.array(context_labels)
     DEFAULT_CONTEXT = carl_env_fn.get_default_context()
     
-    # context_experts = np.array(args.context_experts).reshape(np.size(labels),-1)
 
     for key in context_labels: 
         if key not in DEFAULT_CONTEXT.keys():
@@ -99,33 +70,6 @@ def main():
             'Input labels not in correct order.'
             'ordered_labels=', ordered_labels
              )
-            
-    # context_dict = {}
-    # for i in range(context_experts.shape[1]):
-    #     context_dict[i] = {0:{x:0.0 for x in context_labels}}
-    #     # context_dict[i] = {x:0.0 for x in context_labels}
-        
-    #     for j in range(len(context_labels)):
-    #         context_dict[i][0][context_labels[j]] = context_experts[j, i]
-    #         # context_dict[i][context_labels[j]] = context_experts[j, i]
-    
-    # agent_dict = {}
-    
-    # multiplier = args.multiplier
-    # if multiplier == 0:
-    #     multiplier = []
-    #     tmat = np.min(context_experts, axis=1)
-    #     for element in tmat:
-    #         tm = 1
-    #         while True:
-    #             # if int(value*multiplier) == 0:
-    #             tm = tm*10
-    #             if tm*element % 10 == 0:
-    #                 tm = tm/10
-    #                 break
-    #         multiplier.append(tm)
-    
-    # multiplier_dict = {k:v for k,v in zip(context_labels, multiplier)}
 
     context_mean = []
     for key in DEFAULT_CONTEXT.keys():
@@ -135,7 +79,6 @@ def main():
     print(f"context_mean = {context_mean}")
     
     context_rel_std = args.rel_std
-    print(f"type(context_rel_std) = {type(context_rel_std)}, context_rel_std = {context_rel_std}")
     if isinstance(context_rel_std, list):
         context_std = [abs(mean)*rel_std for mean, rel_std in zip(context_mean, context_rel_std)]
     elif isinstance(context_rel_std, float):
@@ -158,7 +101,6 @@ def main():
     else:
         train_context_array = np.zeros((len(context_mean), n_samples))
         for i in range(len(context_mean)):
-            print(f"i={i}")
             train_context_array[i,:] = np.sign(context_mean[i])*abs(np.random.normal(context_mean[i], context_std[i], n_samples))
     
         save_path = args.prefix + labels_str + "_contexts_up_" + str(n_samples) + ".npy"
@@ -179,7 +121,7 @@ def main():
 
     # if args.alg == "ppo":
     # Loading hyperparams from yml file
-    config_path = '/home/param/crl_notebooks/hyperparams/' + args.alg + '.yml'
+    config_path = 'hyperparams/' + args.alg + '.yml'
     if args.hp_env_id == '':
         gym_id = carl_env_fn.env_name
     else:
@@ -235,10 +177,6 @@ def main():
             tenv = ToGymnasiumActionSpace(tenv)
         return FlattenObservation(FilterObservation(tenv, filter_keys=["obs", "context"]))
     
-    # vec_env = make_vec_env(env_fn, n_envs=args.ppo_nenvs)
-    # up_agent = PPO("MlpPolicy", vec_env, verbose=1)
-    # up_agent.learn(total_timesteps=args.ppo_trainsteps)
-    # train_env = make_vec_env(env_fn, n_envs=n_envs)
     if n_envs != 1:
         if n_envs > 16:
             train_env = make_vec_env(env_fn, n_envs=n_envs)
@@ -264,7 +202,7 @@ def main():
     print(f'eval_freq={eval_freq}')
     save_callback = SaveCallback(save_path=args.savedir, name_prefix=policy_name, chckpt_bool=False, verbose=1)
     eval_callback = EvalCallback(eval_env, callback_on_new_best=save_callback, eval_freq=eval_freq,
-                                 n_eval_episodes=n_samples, log_path="/home/param/crl_notebooks/logs/")
+                                 n_eval_episodes=n_samples, log_path="logs/")
     if args.alg == 'ddpg':
         up_agent = DDPG(policy_type, train_env, **hyperparams, action_noise=action_noise, verbose=1, device=args.device)
     elif args.alg == 'dqn':
@@ -284,20 +222,6 @@ def main():
     up_agent.learn(total_timesteps=n_timesteps, callback=eval_callback)
     train_env.close()
     eval_env.close()
-    # print("Saving policy ... ")
-    # policy_name = "_ppo"
-    # for label in context_labels:
-    #     policy_name = policy_name + "_" + label
-    # # suffix1 = ""
-    # # if args.interval:
-    # #     policy_name = policy_name + "_inter"
-    
-    
-    # policy_name = args.prefix + policy_name + "_up"
-    
-    # save_path = os.path.join(args.savedir,policy_name)
-    # print(f"save_path = {save_path}")
-    # up_agent.save(save_path)
 
 if __name__ == '__main__':
     try:
