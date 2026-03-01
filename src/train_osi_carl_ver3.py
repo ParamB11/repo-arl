@@ -40,7 +40,6 @@ from envs.carl_brax import CARLBraxAnt, CARLBraxHalfcheetah
 def osi_train_callback(model, name, iter):
     params = model.get_variable_dict()
     save_path = os.path.join(logger.get_dir(), name+'_params.pkl')
-    # print('osi_train_callback, save_path =', save_path)
     joblib.dump(params, save_path, compress=True)
 
 def main():
@@ -49,7 +48,6 @@ def main():
     parser.add_argument('-carl_env_name', type=str, help='name of the CARL environment', default='CARLPendulum')
     parser.add_argument('-context_labels', '--context_labels', nargs='+', type=str, help='context labels', required=True)
     parser.add_argument('-seed', help='RNG seed', type=int, default=0)
-    # parser.add_argument('--name', help='name of experiments', type=str, default="") # end with underscore "_" for proper seperation
     parser.add_argument('-exp_name', type=str, help='experiment name to be concatenated with model name', default='') # do not add '_' at the start
     parser.add_argument('-OSI_hist', help='history step size', type=int, default=5)
     parser.add_argument('-dropout_prob', help='dropout probability for training pred_net', type=float, default=0.0)
@@ -57,14 +55,12 @@ def main():
     parser.add_argument('-contextdir', type=str, help='dir for storing/loading context data', default='context_data/')
     parser.add_argument('-policy_prefix', type=str, help='prefix of the saved universal policy', required=True)
     parser.add_argument('-up_suffix', type=str, help='suffix used to load up policy', default='')
-    # parser.add_argument('--dyn_params', action='append', type=str)
     parser.add_argument('-osi_layers', '--osi_layers', nargs='+', type=float, help='set the layer dimensions for osi', default=[256, 128, 64])
     parser.add_argument('-osi_iteration', help='number of iterations', type=int, default=6)
     parser.add_argument('-data_retain_frac', help='fraction of data to retain from previous rounds', type=float, default=1.0)
     parser.add_argument('-training_sample_num', help='number of training samples per iteration', type=int, default=20000)
     parser.add_argument('-action_noise', help='noise added to action', type=float, default=0.0)
 
-    # parser.add_argument('-rel_std', type=float, help='relative standard deviation for training', default=0.25)
     parser.add_argument('-rel_std', '--rel_std', nargs='+', type=float, help='relative standard deviation for training', default=[0.25])
     parser.add_argument('-n_train_contexts', type=int, help='number of contexts to sample for training', default=100)
     args = parser.parse_args()
@@ -77,7 +73,6 @@ def main():
     osi_iteration = args.osi_iteration
     training_sample_num = args.training_sample_num
     current_dir = os.getcwd()
-    # dyn_params = args.dyn_params
 
     context_rel_std = args.rel_std
     n_samples = args.n_train_contexts
@@ -116,7 +111,6 @@ def main():
         else:
             label_scale_factor[0, idx] = 1.0
     
-    # context_std = [abs(mean)*context_rel_std for mean in context_mean]
     if isinstance(args.rel_std, list):
         if len(args.rel_std) == 1:
             context_rel_std = [args.rel_std[0]]*len(context_mean)
@@ -136,9 +130,6 @@ def main():
 
     train_context_array = np.zeros((len(context_mean), n_samples))
 
-    # for i in range(len(context_mean)):
-    #     train_context_array[i,:] = np.sign(context_mean[i])*abs(np.random.normal(context_mean[i], context_std[i], n_samples))
-    # print("train_context_array = ", train_context_array[:, 0:5])
     split_idx = args.policy_prefix.find('_')
     env_prefix = args.policy_prefix[:split_idx]
     labels_str = ""
@@ -167,7 +158,6 @@ def main():
         env = StepAPICompatibility(env, output_truncation_bool=False)
         return env
 
-    # env_up = to_gym(env_fn(show_context=True))
     env_up = to_gym(init_carl(carl_env_fn, 
                               contexts=train_context_dict, 
                               obs_context_features=list(train_context_dict[0].keys()), 
@@ -186,7 +176,6 @@ def main():
     stack_size_obs, stack_size_act = OSI_hist+1, OSI_hist
     obs_queue = deque(maxlen=stack_size_obs)
     act_queue = deque(maxlen=stack_size_act)
-    # tenv = env_fn(show_context=False)
     tenv = init_carl(carl_env_fn,
                      contexts=train_context_dict, 
                      obs_context_features=list(train_context_dict[0].keys()), 
@@ -224,19 +213,13 @@ def main():
     else:
         pol_fn = policy_fn
 
-    # up_policy = pol_fn("pi_test", env_up.observation_space, env_up.action_space)
     policy_name = args.policy_prefix+labels_str+"_up"
     if args.up_suffix != '':
         policy_name = f'{policy_name}_{args.up_suffix}'
     up_policy_path = os.path.join(current_dir, args.policy_path, policy_name)
     up_policy = load_policy(up_policy_path, 'cpu')
-    # up_policy = PPO.load(up_policy_path, env=None, device='cpu')
-    # policy_params = joblib.load(policy_path)
 
     print('env_hist.obs_space.shape[0] =', env_hist.observation_space.shape[0])
-    # define osi model and optimizer
-    # osi = MLP(name='osi', in_dim=env_hist.observation_space.shape[0], out_dim=len(dyn_params), layers=[256, 128, 64],
-    #           activation=tf.nn.relu, last_activation=None, dropout=0.1)
     osi_name = 'osi'+labels_str
     if args.up_suffix != '':
         osi_name = f'{osi_name}_{args.up_suffix}'
@@ -251,9 +234,7 @@ def main():
               dropout=args.dropout_prob) # 0.1)
     updater = MpiAdam(osi.get_trainable_variables())
     optimizer = RegressorOptimizer(osi, updater)
-    # print(f'osi.params: {osi.params}')
     for params_list in osi.params:
-        # print(f'param (type={type(param)}): {param}')
         for param in params_list:
             print(f'name: {param.name}, shape: {param.shape}')
     sess = tf.compat.v1.InteractiveSession()
@@ -277,7 +258,6 @@ def main():
     if args.action_noise != 0.0:
         print(f'args.action_noise = {args.action_noise}')
     tenv = carl_env_fn()
-    # print(f'action_space = {tenv.action_space}')
     if isinstance(tenv.action_space, (gym.spaces.box.Box, gymnasium.spaces.box.Box)):
         print(f'action_space = {tenv.action_space}')
         if len(tenv.action_space.shape) == 1:
@@ -291,7 +271,6 @@ def main():
         max_abs_action_space = np.max(abs_action_space, axis=1)
         print(f'max_abs_action_space = {max_abs_action_space}')
 
-    # print('osi_env.context =', osi_env.wrapped_env.get_wrapper_attr('context'))
     input_data = []
     output_data = []
     for iter in range(osi_iteration):
@@ -306,8 +285,6 @@ def main():
         new_input = []
         new_output = []
         while collected_data_size < training_sample_num:
-            # env_up.reset()
-            # env_hist.reset()
             for _ in range(stack_size_obs - 1):
                 obs_queue.appendleft(padding_value_obs)
             for _ in range(stack_size_act):
@@ -321,41 +298,27 @@ def main():
             
             length = 0
             while True:
-                # true_dyn = env_to_use.env.param_manager.get_simulator_parameters()
                 if iter == 0:
                     true_dyn = np.array([value for value in env_to_use.get_wrapper_attr('context').values()])
                 else:
                     true_dyn = np.array([value for value in env_to_use.wrapped_env.get_wrapper_attr('context').values()])
-                # cur_state = env_to_use.env.state_vector()
         
                 if iter == 0:
-                    # env_hist.env.set_state_vector(cur_state)
                     obs_queue, act_queue, new_obs = update_queues(obs_queue, act_queue, obs=last_obs, act=last_act)
-                    # osi_input = env_hist.env._get_obs()
                     osi_input = new_obs
                 else:
-                    # osi_input = env_to_use.env._get_obs()
                     obs_queue, act_queue, new_obs = update_queues(obs_queue, act_queue, obs=last_obs, act=last_act)
                     osi_input = new_obs
-                    # print(f'osi_input={osi_input}')
 
-                # print(f'length={length}, osi_input={osi_input}')
-                # input_data.append(osi_input)
                 new_input.append(osi_input)
                 true_dyn_scaled = true_dyn/np.squeeze(label_scale_factor)
-                # print(f'true_dyn={true_dyn}, true_dyn_scaled={true_dyn_scaled}')
-                # output_data.append(true_dyn_scaled)
                 new_output.append(true_dyn_scaled)
 
-                # act, _ = up_policy.act(True, o)
                 act, _ = up_policy.predict(o, deterministic=False)
                 if isinstance(tenv.action_space, (gym.spaces.box.Box, gymnasium.spaces.box.Box)):
                     noise = np.random.normal(0, args.action_noise, size=act.shape[0])*max_abs_action_space
-                    # print(f'act = {act}, noise = {noise}')
                     noisy_act = act + noise
-                # elif isinstance(env_to_use.action_space, gym.spaces.discrete.Discrete):
                 elif isinstance(tenv.action_space, (gym.spaces.discrete.Discrete, gymnasium.spaces.discrete.Discrete)):
-                    # noisy_act = act
                     ## choose a random action with probability args.action.noise
                     if np.random.uniform() < args.action_noise:
                         noisy_act = env_to_use.action_space.sample()
@@ -365,7 +328,6 @@ def main():
                         print(f'Random action = {act}, noisy action = {noisy_act}')
                     else:
                         noisy_act = act
-                # o, r, d, _ = env_to_use.step(act + np.random.normal(0, args.action_noise, len(act)))
                 o, r, d, _ = env_to_use.step(noisy_act)
                 last_obs = o[-one_obs_len:]
                 last_act = noisy_act # act
